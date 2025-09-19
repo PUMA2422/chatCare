@@ -4,27 +4,6 @@ import Header from "./components/Header";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
 
-// Helper: smart join of previous text + incoming chunk
-function joinChunks(prevText, chunk) {
-  if (!prevText) return chunk || "";
-  if (!chunk) return prevText;
-
-  // convert escaped newlines (if the model returns backslash+n)
-  chunk = chunk.replace(/\\n/g, "\n");
-
-  // if chunk starts with whitespace, just append
-  if (/^\s/.test(chunk)) return prevText + chunk;
-
-  // if prevText already ends with whitespace, just append
-  if (/\s$/.test(prevText)) return prevText + chunk;
-
-  // if chunk begins with punctuation that should not have space before it, append directly
-  if (/^[.,!?;:)\]}]/.test(chunk)) return prevText + chunk;
-
-  // otherwise insert single space
-  return prevText + " " + chunk;
-}
-
 export default function App() {
   const [messages, setMessages] = useState([
     { text: "Hi, I’m Botzy! How can I help you today?", sender: "bot" },
