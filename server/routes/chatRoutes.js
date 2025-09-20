@@ -4,7 +4,7 @@ import express from "express";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-  const { message, model = "llama3.2", system = "" } = req.body;
+  const { message, model = "medllama2", system = "" } = req.body;
 
   try {
     // Request Ollama with streaming enabled

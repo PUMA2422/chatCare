@@ -1,91 +1,100 @@
-// App.jsx (replace your handleSend & add helper in this file)
+// App.jsx
 import React, { useState } from "react";
 import Header from "./components/Header";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
+import NamePrompt from "./components/NamePrompt";
 
 export default function App() {
-  const [messages, setMessages] = useState([
-    { text: "Hi, I’m Botzy! How can I help you today?", sender: "bot" },
-  ]);
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(false); // track if bot is responding
+    const [userName, setUserName] = useState(() => {
+        return "";
+    });
 
-// inside App.jsx
-  const handleSend = async (text) => {
-    const newMessage = { text, sender: "user" };
-    setMessages((prev) => [...prev, newMessage]);
-
-    // unique id for this streaming assistant message
-    const streamId = Date.now().toString();
-
-    // add placeholder assistant message (we will update it as chunks arrive)
-    setMessages((prev) => [...prev, { text: "", sender: "bot", id: streamId }]);
-
-    try {
-      const res = await fetch("http://localhost:5000/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "Server error");
-        throw new Error(errText || "Chat server error");
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let accumulated = "";
-
-      // streaming loop: append each plain chunk to accumulated and update the placeholder
-      while (!done) {
-        const { done: doneReading, value } = await reader.read();
-        done = doneReading;
-        if (value) {
-          // decode chunk (plain text forwarded by server)
-          const chunk = decoder.decode(value, { stream: true });
-
-          // convert escaped newlines like "\\n" into real newlines
-          const norm = chunk.replace(/\\n/g, "\n");
-
-          accumulated += norm;
-
-          // Update only the message with the matching streamId. Append a small cursor while streaming.
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === streamId
-                ? { ...msg, text: accumulated + "▍" } // cursor
-                : msg
-            )
-          );
+    const handleSetUserName = (name) => {
+        setUserName(name);
+        try {
+            localStorage.setItem("chatcare_user", name);
+        } catch (e) {
+            /* ignore storage errors */
         }
-      }
+    };
 
-      // final update: remove cursor
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === streamId ? { ...msg, text: accumulated } : msg
-        )
-      );
-    } catch (error) {
-      console.error("Error talking to server:", error);
-      // replace the placeholder message (if it exists) with an error notice
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === streamId
-            ? { ...msg, text: "⚠️ Botzy is offline right now." }
-            : msg
-        )
-      );
-    }
-  };
+    const handleSend = async (text) => {
+        const newMessage = { text, sender: "user" };
+        setMessages((prev) => [...prev, newMessage]);
 
+        const streamId = Date.now().toString();
+        setMessages((prev) => [...prev, { text: "", sender: "bot", id: streamId }]);
 
-  return (
-    <div className="flex flex-col h-screen">
-      <Header />
-      <ChatWindow messages={messages} />
-      <ChatInput onSend={handleSend} />
-    </div>
-  );
+        setLoading(true); // 🚀 disable input while streaming
+
+        try {
+            const res = await fetch("http://localhost:5000/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: text }),
+            });
+
+            if (!res.ok) {
+                const errText = await res.text().catch(() => "Server error");
+                throw new Error(errText || "Chat server error");
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let done = false;
+            let accumulated = "";
+
+            while (!done) {
+                const { done: doneReading, value } = await reader.read();
+                done = doneReading;
+                if (value) {
+                    const chunk = decoder.decode(value, { stream: true });
+                    const norm = chunk.replace(/\\n/g, "\n");
+                    accumulated += norm;
+
+                    setMessages((prev) =>
+                        prev.map((msg) =>
+                            msg.id === streamId
+                                ? { ...msg, text: accumulated + "▍" }
+                                : msg
+                        )
+                    );
+                }
+            }
+
+            // Final update
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === streamId ? { ...msg, text: accumulated } : msg
+                )
+            );
+        } catch (error) {
+            console.error("Error talking to server:", error);
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === streamId
+                        ? { ...msg, text: "⚠️ Botzy is offline right now." }
+                        : msg
+                )
+            );
+        } finally {
+            setLoading(false); // ✅ re-enable input after response is done
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-screen bg-gray-900">
+            {!userName && <NamePrompt onSubmit={handleSetUserName} />}
+            <Header />
+            <div className="flex-1">
+                <ChatWindow messages={messages} userName={userName} />
+            </div>
+
+            <ChatInput onSend={handleSend} disabled={loading} />
+        </div>
+    );
+
 }
